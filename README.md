@@ -3,3 +3,6 @@
 
 ## v0
 原来的linux 0.11
+
+## Update_v0.1
+在kernal/sys.c里添加了sys_sleep，相应更改了include/unistd.h和include/linux/sys.h
