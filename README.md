@@ -6,3 +6,6 @@
 
 ## Update_v0.1
 在kernal/sys.c里添加了sys_sleep，相应更改了include/unistd.h和include/linux/sys.h
+
+## Update_v0.2
+添加了sys_execve2，修改的文件有mm/memory.c，kernal/system_call.s，lib/execve.c
