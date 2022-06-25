@@ -12,3 +12,6 @@
 
 ## v0.3
 添加了sys_getdents
+
+## v0.4
+添加了sys_getcwd
