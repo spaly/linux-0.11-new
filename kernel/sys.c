@@ -13,9 +13,41 @@
 #include <sys/times.h>
 #include <sys/utsname.h>
 
+struct linux_dirent{
+	long d_ino;
+	off_t d_off;
+	unsigned short d_reclen;
+	char d_name[14];
+};
 int sys_getdents(unsigned int fd, struct linux_dirent *dirp, unsigned int
 count){
-	return -1;
+	if (!count) return -1;
+	struct m_inode *inode; //内存中的i节点结构
+	struct buffer_head *bh; // 缓冲区头
+	inode=current->filp[fd]->f_inode;
+	bh=bread(inode->i_dev, inode->i_zone[0]);
+
+	struct linux_dirent myld; // bi xu zai qian mian
+	int siz_dir=sizeof(struct dir_entry),siz_ld=sizeof(struct linux_dirent);
+	struct dir_entry *dir; //文件目录项
+	char *buf; int ans=0,k=0;
+	for(; k<inode->i_size; k+=siz_dir){
+		if (ans+siz_ld>=count) return 0;
+		dir=(struct dir_entry *)(bh->b_data+k); //shu jv kuai zhi zheng + pian yi liang
+		if (dir->inode==0) continue;
+		
+		myld.d_ino=dir->inode;
+		memcpy(myld.d_name,dir->name,NAME_LEN);
+		myld.d_off=0;
+		myld.d_reclen=sizeof(myld);
+
+		buf=&myld; int i;
+		for(i=0; i< myld.d_reclen; ++i) //cun ru huan chong qu
+			put_fs_byte(*(buf+i), ((char *)dirp)+i+ans );
+		ans+=myld.d_reclen;
+	}
+	brelse(bh);
+	return ans;
 }
 int sys_sleep(unsigned int seconds){
 	if (sys_signal(SIGALRM,SIG_IGN,14)==-1) return -1;
