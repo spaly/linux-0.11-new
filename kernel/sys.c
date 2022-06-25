@@ -27,13 +27,13 @@ count){
 	inode=current->filp[fd]->f_inode;
 	bh=bread(inode->i_dev, inode->i_zone[0]);
 
-	struct linux_dirent myld; // bi xu zai qian mian
+	struct linux_dirent myld;
 	int siz_dir=sizeof(struct dir_entry),siz_ld=sizeof(struct linux_dirent);
 	struct dir_entry *dir; //文件目录项
 	char *buf; int ans=0,k=0;
 	for(; k<inode->i_size; k+=siz_dir){
 		if (ans+siz_ld>=count) return 0;
-		dir=(struct dir_entry *)(bh->b_data+k); //shu jv kuai zhi zheng + pian yi liang
+		dir=(struct dir_entry *)(bh->b_data+k); //数据块指针+偏移量
 		if (dir->inode==0) continue;
 		
 		myld.d_ino=dir->inode;
@@ -42,7 +42,7 @@ count){
 		myld.d_reclen=sizeof(myld);
 
 		buf=&myld; int i;
-		for(i=0; i< myld.d_reclen; ++i) //cun ru huan chong qu
+		for(i=0; i<myld.d_reclen; ++i) //存入缓冲区
 			put_fs_byte(*(buf+i), ((char *)dirp)+i+ans );
 		ans+=myld.d_reclen;
 	}
@@ -56,7 +56,46 @@ int sys_sleep(unsigned int seconds){
 	return 0;
 }
 long sys_getcwd(char * buf, size_t size){
-	return -1;
+	struct buffer_head *bh;
+	struct dir_entry *dir,*fdir;
+	char ch[256]="",tmp[256]="";
+	int siz_dir=sizeof(struct dir_entry);
+
+	struct m_inode *xi=current->pwd,*fi;
+	if (xi==current->root) ch[0]="/",ch[1]=0;
+	else{
+		int block;
+		if ( !(block=xi->i_zone[0]) )
+			return NULL;
+		if ( !(bh=bread(xi->i_dev,block)) )
+			return NULL;
+		
+		while(xi!=current->root){ //回溯到根目录
+			dir=(struct dir_entry *)(bh->b_data+siz_dir);
+			fi=iget(xi->i_dev, dir->inode); //读取父亲的i节点
+			if ( !(block=fi->i_zone[0]) )
+				return NULL;
+			if ( !(bh=bread(fi->i_dev,block)) )
+				return NULL;
+			
+			int k=0;
+			fdir=(struct dir_entry *)(bh->b_data);
+			while(fdir->inode){ //遍历目录项
+				if (fdir->inode == xi->i_num){//i节点号对上了，表示找到了当前节点对应的文件目录项
+					strcpy(tmp, "/"); strcat(tmp, fdir->name);
+					strcat(tmp, ch); strcpy(ch, tmp);
+					break;
+				}
+				k+=siz_dir; 
+				fdir=(struct dir_entry *)(bh->b_data+k); //获取下一个文件目录项
+			}
+			xi=fi;
+		}
+	}
+	int l=strlen(ch),i;
+	if (l>size) return NULL;
+	for(i=0;i<l;++i) put_fs_byte(ch[i],buf+i);
+	return (long)buf;
 };
 int sys_pipe2(){return -1;}
 int sys_mmap(){return -1;}
