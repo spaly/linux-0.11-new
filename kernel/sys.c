@@ -30,11 +30,11 @@ count){
 	struct linux_dirent myld;
 	int siz_dir=sizeof(struct dir_entry),siz_ld=sizeof(struct linux_dirent);
 	struct dir_entry *dir; //文件目录项
-	char *buf; int ans=0,k=0;
+	char *buf; int ans=0,k=0; //ans记录读取的字节数
 	for(; k<inode->i_size; k+=siz_dir){
-		if (ans+siz_ld>=count) return 0;
 		dir=(struct dir_entry *)(bh->b_data+k); //数据块指针+偏移量
-		if (dir->inode==0) continue;
+		if (dir->inode==0) continue; //节点为空
+		if (ans+siz_ld>=count) return 0; //dirp满了
 		
 		myld.d_ino=dir->inode;
 		memcpy(myld.d_name,dir->name,NAME_LEN);
@@ -42,7 +42,7 @@ count){
 		myld.d_reclen=sizeof(myld);
 
 		buf=&myld; int i;
-		for(i=0; i<myld.d_reclen; ++i) //存入缓冲区
+		for(i=0; i<myld.d_reclen; ++i) //存入dirp
 			put_fs_byte(*(buf+i), ((char *)dirp)+i+ans );
 		ans+=myld.d_reclen;
 	}
@@ -61,35 +61,33 @@ long sys_getcwd(char * buf, size_t size){
 	char ch[256]="",tmp[256]="";
 	int siz_dir=sizeof(struct dir_entry);
 
-	struct m_inode *xi=current->pwd,*fi;
-	if (xi==current->root) ch[0]="/",ch[1]=0;
+	struct m_inode *xi=current->pwd,*fi; //xi是当前目录的i节点
+	if (xi==current->root) ch[0]="/",ch[1]=0; //特判已经是根节点的情况
 	else{
 		int block;
 		if ( !(block=xi->i_zone[0]) )
 			return NULL;
-		if ( !(bh=bread(xi->i_dev,block)) )
+		if ( !(bh=bread(xi->i_dev,block)) ) //读取当前目录的数据块内容
 			return NULL;
 		
-		while(xi!=current->root){ //回溯到根目录
-			dir=(struct dir_entry *)(bh->b_data+siz_dir);
-			fi=iget(xi->i_dev, dir->inode); //读取父亲的i节点
+		while(xi!=current->root){ //回溯到根目录为止
+			dir=(struct dir_entry *)(bh->b_data+siz_dir); //定位上一级目录
+			fi=iget(xi->i_dev, dir->inode); //fi是上一级目录的i节点
 			if ( !(block=fi->i_zone[0]) )
 				return NULL;
-			if ( !(bh=bread(fi->i_dev,block)) )
+			if ( !(bh=bread(fi->i_dev,block)) ) //读取上一级目录的数据块内容
 				return NULL;
 			
 			int k=0;
-			fdir=(struct dir_entry *)(bh->b_data);
-			while(fdir->inode){ //遍历目录项
-				if (fdir->inode == xi->i_num){//i节点号对上了，表示找到了当前节点对应的文件目录项
-					strcpy(tmp, "/"); strcat(tmp, fdir->name);
+			for(; k<fi->i_size; k+=siz_dir){ //遍历上一级目录的目录项
+				fdir=(struct dir_entry *)(bh->b_data+k);
+				if (fdir->inode == xi->i_num){ //i节点号对上了，表示找到了当前节点对应的文件目录项
+					strcpy(tmp, "/"); strcat(tmp, fdir->name); //拼接目录路径字符串
 					strcat(tmp, ch); strcpy(ch, tmp);
 					break;
 				}
-				k+=siz_dir; 
-				fdir=(struct dir_entry *)(bh->b_data+k); //获取下一个文件目录项
 			}
-			xi=fi;
+			xi=fi; //回溯到上一级目录
 		}
 	}
 	int l=strlen(ch),i;
